@@ -15,6 +15,7 @@ data class FeatureSet(
     val registry: Registry,
     val featureClass: Class<*>,
     val extensionClasses: Map<String, Class<*>?>,
+    val documentation: Documentation
 ) {
     /**
      * The feature which this set is based on.

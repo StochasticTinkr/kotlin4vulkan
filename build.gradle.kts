@@ -47,6 +47,8 @@ dependencies {
         implementation(
             Lwjgl.Module.core,
             Lwjgl.Module.vulkan,
+            Lwjgl.Module.glfw,
+            Lwjgl.Module.shaderc,
         )
     }
     testImplementation("org.jetbrains.kotlin:kotlin-test")

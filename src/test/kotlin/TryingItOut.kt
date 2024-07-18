@@ -24,30 +24,49 @@ class TryingItOut {
                     println("Extension: ${it.extensionNameString()}")
                 }
         }
-
-        val instance = onStack {
-            Vulkan.createInstance(
-                VkInstanceCreateInfo(stack) {
-                    pApplicationInfo(
-                        VkApplicationInfo(stack) {
-                            pApplicationName(stack.UTF8("Hello, Vulkan!"))
-                            pEngineName(stack.UTF8("StochasticTinkr"))
-                            apiVersion(Version(1, 0, 0).intValue)
+        var closeables = mutableListOf<AutoCloseable>()
+        val instance = Vulkan.createInstance {
+            application(
+                "Hello, Vulkan!",
+                Version(1, 0),
+                "StochasticTinkr",
+                Version(1, 0),
+                Version(1, 0, 0)
+            )
+            enablePortabilityEnumeration()
+            enableValidation()
+            debugUtilsMessenger {
+                severity { VERBOSE + INFO + WARNING + ERROR }
+                type { GENERAL + VALIDATION + PERFORMANCE + DEVICE_ADDRESS_BINDING }
+                callback { severity, type, message ->
+                    val severity = when (severity) {
+                        VkDebugUtilsMessageSeverityFlagBitsEXT.VERBOSE -> "[\u001B[36mVERBOSE\u001B[0m]"
+                        VkDebugUtilsMessageSeverityFlagBitsEXT.INFO -> "[\u001B[37m  INFO  \u001B[0m]"
+                        VkDebugUtilsMessageSeverityFlagBitsEXT.WARNING -> "[\u001B[33mWARNING\u001B[0m]"
+                        VkDebugUtilsMessageSeverityFlagBitsEXT.ERROR -> "[\u001B[31m ERROR \u001B[0m]"
+                        else -> ""
+                    }
+                    val type = sequence {
+                        if (VkDebugUtilsMessageTypeFlagsEXT.GENERAL in type) {
+                            yield("\u001B[32mGENERAL\u001B[0m")
                         }
-                    )
-                    if ("VK_LAYER_KHRONOS_validation" in Vulkan.enumerateInstanceLayerProperties()
-                            .map { it.layerNameString() }
-                    ) {
-                        ppEnabledLayerNames(stack.utf8List("VK_LAYER_KHRONOS_validation"))
-                    }
-                    if ("VK_KHR_portability_enumeration" in Vulkan.enumerateInstanceExtensionProperties()
-                            .map { it.extensionNameString() }
-                    ) {
-                        ppEnabledExtensionNames(stack.utf8List("VK_KHR_portability_enumeration"))
-                        flags { ENUMERATE_PORTABILITY_KHR }
-                    }
-                })
+                        if (VkDebugUtilsMessageTypeFlagsEXT.VALIDATION in type) {
+                            yield("\u001B[35mVALIDATION\u001B[0m")
+                        }
+                        if (VkDebugUtilsMessageTypeFlagsEXT.PERFORMANCE in type) {
+                            yield("\u001B[34mPERFORMANCE\u001B[0m")
+                        }
+                        if (VkDebugUtilsMessageTypeFlagsEXT.DEVICE_ADDRESS_BINDING in type) {
+                            yield("\u001B[33mDEVICE ADDRESS BINDING\u001B[0m")
+                        }
+                    }.joinToString()
+                    println("[$type]\n$severity ${message.pMessageString()}")
+                }
+
+                onCreate { closeables.add(it) }
+            }
         }
+
         instance.enumeratePhysicalDevices().forEach { physicalDevice ->
             onStack {
                 val properties = physicalDevice.getProperties(stack)
@@ -99,9 +118,8 @@ class TryingItOut {
                         println("        Min image transfer granularity: ${minImageTransferGranularity.height()}x${minImageTransferGranularity.width()}x${minImageTransferGranularity.depth()}")
                     }
                 }
-
-
             }
         }
+        closeables.forEach(AutoCloseable::close)
     }
 }

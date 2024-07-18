@@ -192,6 +192,7 @@ class KotlinFileBuilder(
         }
     }
 
+
     inline operator fun <T> Iterable<T>.rangeTo(block: (T) -> CharSequence) {
         forEach { +block(it) }
     }
@@ -200,8 +201,19 @@ class KotlinFileBuilder(
         forEach { +block(it) }
     }
 
-    fun indented(spaces: Int = 4) =
-        KotlinFileBuilder(packageName, imports, lines, "$indent${" ".repeat(spaces)}")
+    @OptIn(ExperimentalContracts::class)
+    inline fun kDoc(block: KotlinFileBuilder.() -> Unit) {
+        contract { callsInPlace(block, InvocationKind.EXACTLY_ONCE) }
+        -"/**"
+        indented(" * ").run {
+            block()
+            flushDeferred()
+        }
+        -" */"
+    }
+
+    fun indented(spaces: Int = 4) = indented(" ".repeat(spaces))
+    fun indented(extraIndent: String) = KotlinFileBuilder(packageName, imports, lines, "$indent$extraIndent")
 }
 
 @OptIn(ExperimentalContracts::class)
@@ -286,7 +298,7 @@ fun openStream(path: Path): PrintStream {
     return PrintStream(FileOutputStream(path.toFile()).buffered(), false)
 }
 
-interface KotlinWritable {
+fun interface KotlinWritable {
     fun KotlinFileBuilder.write()
 }
 

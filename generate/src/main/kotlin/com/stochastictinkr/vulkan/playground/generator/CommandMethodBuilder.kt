@@ -51,6 +51,7 @@ class CommandMethodBuilder(
     var skipContracts: Boolean? = null,
     private var checkReturn: String? = null,
     var ignoreReturn: Boolean = returnType != null || returnStatement != null,
+    var kDoc: context(KotlinFileBuilder) (CommandMethodBuilder) -> Unit = {},
     configure: CommandMethodBuilder.() -> Unit = {},
 ) : KotlinWritable, Imports by ImportsImpl(mutableSetOf()) {
 
@@ -92,11 +93,14 @@ class CommandMethodBuilder(
         }
         val returnType = (returnType ?: returnValueConstructor?.name)?.let { ": $it" } ?: ""
 
-        this@KotlinFileBuilder.mergeImports(this@CommandMethodBuilder)
+        val kotlinFileBuilder = this@KotlinFileBuilder
+        val commandMethodBuilder = this@CommandMethodBuilder
+        kotlinFileBuilder.mergeImports(commandMethodBuilder)
 
         jvmName?.let { +"@JvmName(\"$it\")" }
 
         methodComment?.let { +"// $it" }
+        kDoc(kotlinFileBuilder, commandMethodBuilder)
         if (!skipContracts) usesContracts()
         "$inline${override}fun $receiver$methodName($parameters)$returnType" {
             "contract"(skipIf = skipContracts) {
@@ -255,7 +259,8 @@ class CommandMethodBuilder(
             nullable = "?"
             if (parameter.jvmType != CharSequence::class.java) {
                 default = " = null"
-            }        }
+            }
+        }
         parameters.add("${parameter.name}: ${parameter.jvmType.fullName}$nullable$default")
         addArgument(parameter.name)
     }

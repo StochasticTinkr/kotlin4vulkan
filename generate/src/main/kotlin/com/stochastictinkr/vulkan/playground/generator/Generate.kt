@@ -37,7 +37,12 @@ fun generate(
     }
 }
 
-private fun createFeatureSet(registry: Registry, featureName: String, api: String): FeatureSet {
+private fun createFeatureSet(
+    registry: Registry,
+    featureName: String,
+    api: String,
+    documentation: Documentation,
+): FeatureSet {
     fun String.extensionToClassName(): String {
         return replace("VK_", "")
             .splitToSequence("_")
@@ -52,7 +57,7 @@ private fun createFeatureSet(registry: Registry, featureName: String, api: Strin
 
     val featureClassName = featureName.replace("_VERSION_", "").replace("_", "")
     val featureClass = LwjglClasses.vulkan(featureClassName) ?: error("Missing $featureClassName class")
-    return FeatureSet(api, featureName, registry, featureClass, extensionClasses)
+    return FeatureSet(api, featureName, registry, featureClass, extensionClasses, documentation)
 }
 
 
@@ -69,7 +74,8 @@ fun main(vararg args: String) {
     println("Generating bindings for ${arguments.targetApi} ${arguments.targetFeature} in ${arguments.output} from ${arguments.input}")
     val featureSet = with(arguments) {
         val registry = parseRegistry(loadXml(input.resolve("xml/vk.xml")))
-        createFeatureSet(registry, targetFeature, targetApi)
+        val documentation = parseDocumentation(input)
+        createFeatureSet(registry, targetFeature, targetApi, documentation)
     }
     generate(arguments.output, featureSet)
 }

@@ -13,6 +13,7 @@ private val longType = java.lang.Long.TYPE
 private const val heapParameter = "@Suppress(\"UNUSED_PARAMETER\") heap: Heap"
 
 class HandleGenerator(private val root: Path, private val featureSet: FeatureSet) {
+    private val documentation = featureSet.documentation
     private val reachableObjectsByType: Map<String?, List<ReachableObject>> by lazy {
         buildReachableObjectsByType()
     }
@@ -38,14 +39,19 @@ class HandleGenerator(private val root: Path, private val featureSet: FeatureSet
                     .commandMethods
                     .firstOrNull { isCloseMethod(it, type) }
 
-            if (lwjglHandle == null) {
-                if (type == null) {
+
+            when {
+                lwjglHandle == null && type == null -> {
+                    documentation.globalObject(handleClassName)
                     "data object $handleClassName" {
                         +commandMethodsBuilders(null, null)
                     }
-                } else {
+                }
+
+                lwjglHandle == null && type != null -> {
                     val extends = if (closeMethod != null) ": AutoCloseable" else ""
                     val parentVal = parentField?.let { ", val $it: $parentTypeName" } ?: ""
+                    documentation.handleClass(type)
                     "class $handleClassName(val handle: Long$parentVal)$extends" {
                         +"override fun toString() = \"$handleClassName(\$handle)\""
                         +commandMethodsBuilders(type, null)
@@ -53,15 +59,16 @@ class HandleGenerator(private val root: Path, private val featureSet: FeatureSet
                         writeClose(receiver = null, closeMethod = closeMethod, handleType = type.name)
                     }
                 }
-            } else {
-                type!!
-                import(lwjglHandle)
-                val receiver = lwjglHandle.fullName
-                writeClose(receiver = receiver, closeMethod = closeMethod, handleType = type.name)
-                +commandMethodsBuilders(type, receiver)
+
+                lwjglHandle != null && type != null -> {
+                    import(lwjglHandle)
+                    val receiver = lwjglHandle.fullName
+                    writeClose(receiver = receiver, closeMethod = closeMethod, handleType = type.name)
+                    +commandMethodsBuilders(type, receiver)
+                }
+
+                else -> error("unexpected lwjgl handle class and global type")
             }
-
-
         }
     }
 
@@ -163,6 +170,9 @@ class HandleGenerator(private val root: Path, private val featureSet: FeatureSet
         methodName: String = methodNameFor(handleType, commandMethod),
         ignoreReturn: Boolean = false,
         override: Boolean = false,
+        kDoc: context(KotlinFileBuilder) (CommandMethodBuilder) -> Unit = {
+            documentation.command(it)
+        },
     ): CommandMethodBuilder {
         return CommandMethodBuilder(
             featureSet = featureSet,
@@ -173,6 +183,7 @@ class HandleGenerator(private val root: Path, private val featureSet: FeatureSet
             reachableObjects = reachableObjects,
             reachableObjectsByType = reachableObjectsByType,
             ignoreReturn = ignoreReturn,
+            kDoc = kDoc,
         ) {
             commandMethod.parameters.forEach { add(it) }
         }
@@ -191,7 +202,6 @@ class HandleGenerator(private val root: Path, private val featureSet: FeatureSet
         val count: MatchedParameter,
         val builder: OutputFunctionBuilder,
     ) : OutputFunctionBuilder by builder {
-        val countArgument = count.name
         val outputAllocator = when (val type = builder.output.jvmType) {
             PointerBuffer::class.java, IntBuffer::class.java, LongBuffer::class.java -> "${type.simpleName}Allocator"
             else -> "${type.outerMost.simpleName}Allocator"
@@ -264,6 +274,7 @@ class HandleGenerator(private val root: Path, private val featureSet: FeatureSet
         }
         return sequence {
             commandMethodBuilder {
+                kDoc = { documentation.command(it) }
                 LwjglClasses.vulkan(output.type)?.let { import(it) }
                 needsStack = true
                 val isList = output.len.isNotEmpty()
@@ -347,6 +358,7 @@ class HandleGenerator(private val root: Path, private val featureSet: FeatureSet
 
         return sequence {
             commandMethodBuilder {
+                kDoc = { documentation.command(it) }
                 needsStack = true
                 returnType = output.type
                 returnStatement = "return ${output.type}(${output.name}[0])"
@@ -366,6 +378,7 @@ class HandleGenerator(private val root: Path, private val featureSet: FeatureSet
         }
         return sequence {
             commandMethodBuilder {
+                kDoc = { documentation.command(it) }
                 needsStack = true
                 returnType = type
                 returnStatement = "return ${output.name}[0]"
@@ -423,6 +436,7 @@ class HandleGenerator(private val root: Path, private val featureSet: FeatureSet
                 methodNameFor(handleType, commandMethod),
                 receiver, false, reachableObjects, reachableObjectsByType
             ) {
+                kDoc = { documentation.command(it) }
                 import(output.jvmType)
                 inputs.forEach { add(it) }
                 createVals.add("val ${output.name} = $allocator")
@@ -460,6 +474,7 @@ class HandleGenerator(private val root: Path, private val featureSet: FeatureSet
                     +".allocOn($allocator)"
                 }
             ) {
+                kDoc = { documentation.command(it) }
                 import(output.jvmType)
                 inputs.forEach { add(it) }
                 parameters.add(lastParam)
@@ -586,6 +601,7 @@ class HandleGenerator(private val root: Path, private val featureSet: FeatureSet
                 }
             },
         ) {
+            kDoc = { documentation.command(it) }
             import("com.stochastictinkr.util.CompleteEnumerable")
             import(output.jvmType)
             inputs.forEach { add(it) }
@@ -612,6 +628,7 @@ class HandleGenerator(private val root: Path, private val featureSet: FeatureSet
                 returnStatement = "",
                 inline = false,
             ) {
+                kDoc = { documentation.command(it) }
                 import(output.jvmType)
                 inputs.forEach { add(it) }
                 arguments.add(count.name)
@@ -645,6 +662,7 @@ class HandleGenerator(private val root: Path, private val featureSet: FeatureSet
                 methodNameFor(handleType, commandMethod),
                 receiver, false, reachableObjects, reachableObjectsByType,
             ) {
+                kDoc = { documentation.command(it) }
                 inputs.forEach { add(it) }
                 val length = if (output.len.isEmpty()) "1" else {
                     lengthExpression(output.len, commandMethod)
@@ -656,196 +674,6 @@ class HandleGenerator(private val root: Path, private val featureSet: FeatureSet
             }
         )
     }
-
-    /*
-        private fun enumerableFunctionBuilder(
-            receiver: String?,
-            handleType: String?,
-            commandMethod: CommandMethod,
-            methodName: String = methodNameFor(handleType, commandMethod),
-            reachableObjects: List<ReachableObject> = reachableObjectsByType.getValue(handleType),
-            override: Boolean,
-        ): CommandMethodBuilder? {
-            val (_, method) = commandMethod
-            val methodType = method.toTypeString()
-            val parameters = methodType.parameters
-            val matchedParameters = commandMethod.matchedParameters
-            if (matchedParameters.count { it.numPointers == 1 && !it.isConst } != 2) return null
-            val (countParam, valueParam) = matchedParameters.takeLast(2)
-            if (valueParam.declaredParam.len != listOf(countParam.name)) return null
-            if (countParam.optional != listOf(false, true)) return null
-            if (countParam.type != "uint32_t") return null
-            if (valueParam.optional != listOf(true)) return null
-
-            validateCommandMethod(methodType, parameters, method)
-            val inputs = matchedParameters.dropLast(2)
-
-            // Find the allocator for the valueParam:
-            val category = featureSet.categoryByTypeName.getValue(valueParam.type)
-            val completeAllocatorClassName: String =
-                if (category == Category.STRUCT) valueParam.type + "Allocator"
-                else "${valueParam.jvmType.fullName}Allocator"
-
-            return CommandMethodBuilder(
-                featureSet = featureSet,
-                methodType = methodType,
-                methodName = methodName,
-                receiver = receiver,
-                override = override,
-                reachableObjects = reachableObjects,
-                reachableObjectsByType = reachableObjectsByType,
-                methodComment = "Enumerable method",
-                returnType = "CompleteEnumerable<${valueParam.jvmType.fullName}>",
-                inline = false,
-                evalWrapper = {
-                    "return CompleteEnumerable($completeAllocatorClassName)"(lambdaParams = "pCount, pValues") {
-                        it()
-                    }
-                },
-                skipContracts = true,
-            ) {
-                import("com.stochastictinkr.util.CompleteEnumerable")
-                import(valueParam.jvmType)
-                inputs.forEach { add(it) }
-                arguments.add("pCount")
-                arguments.add("pValues")
-            }
-        }
-    */
-
-    /*
-        private fun getFunctionBuilder(
-            receiver: String?,
-            handleType: String?,
-            commandMethod: CommandMethod,
-            methodName: String = methodNameFor(handleType, commandMethod),
-            reachableObjects: List<ReachableObject> = reachableObjectsByType.getValue(handleType),
-            override: Boolean,
-        ): CommandMethodBuilder? {
-            val (_, method) = commandMethod
-            val methodType = method.toTypeString()
-            val parameters = methodType.parameters
-            validateCommandMethod(methodType, parameters, method)
-            val matchedParameters = commandMethod.matchedParameters
-            if (commandMethod.command.params.count { it.numPointers == 1 && !it.isConst } != 1) return null
-            val inputs = matchedParameters.dropLast(1)
-            val output = matchedParameters.lastOrNull() ?: return null
-            if (output.isConst) return null
-            val outputType = output.type
-            val outputCategory = featureSet.categoryByTypeName[outputType]
-            if (outputCategory !in setOf(Category.HANDLE, Category.ENUM, Category.BITMASK, Category.BASETYPE)) return null
-
-            if (output.declaredParam.len.isNotEmpty()) {
-                if (outputCategory != Category.HANDLE) {
-                    System.err.println("WARNING: Output param ${output.name} has a length ${output.declaredParam.len} in ${commandMethod.command.name}")
-                    return null
-                }
-            }
-
-            if (Category.BASETYPE == outputCategory && outputType !in setOf(
-                    "VkBool32",
-                    "VkDeviceSize",
-                    "VkRemoteAddressNV"
-                )
-            ) {
-                System.err.println("WARNING: Unsupported return type $outputType in ${commandMethod.command.name}")
-                return null
-            }
-            if (parameters.last().jvmType !in setOf(
-                    PointerBuffer::class.java,
-                    LongBuffer::class.java,
-                    IntBuffer::class.java
-                )
-            ) return null
-
-            if (outputCategory == Category.HANDLE) {
-                LwjglClasses.vulkan(handleClassName(outputType))?.constructors?.any { constructor ->
-                    isSupportedHandleConstructor(constructor, commandMethod, reachableObjects)
-                }?.let {
-                    if (!it) {
-                        System.err.println("WARNING: Failed to find a suitable constructor for $outputType in ${commandMethod.command.name}")
-                        return null
-                    }
-                }
-                val parent = handleParent(outputType)
-                if (reachableObjects.none { it.typeName == parent }) return null
-            }
-
-            return CommandMethodBuilder(
-                featureSet = featureSet,
-                methodType = methodType,
-                methodName = methodName,
-                receiver = receiver,
-                override = override,
-                reachableObjects = reachableObjects,
-                reachableObjectsByType = reachableObjectsByType,
-                methodComment = "Get method",
-                needsStack = true
-            ) {
-                LwjglClasses.vulkan(output.type)?.let { import(it) }
-                inputs.forEach { add(it) }
-                val mallocType = output.jvmType.simpleName.removeSuffix("Buffer")
-                val length = if (output.declaredParam.len.isEmpty()) "1" else {
-                    lengthExpression(output.declaredParam.len, commandMethod)
-                }
-                createVals.add("val ${output.name} = stack.malloc$mallocType($length)")
-                arguments.add(output.name)
-                when {
-                    outputCategory == Category.HANDLE -> {
-                        thenConstruct(handleClassName(output.type)) {
-                            if (output.declaredParam.len.isNotEmpty()) {
-                                addArgument("it")
-                            } else {
-                                addArgument(output.name + "[0]")
-                            }
-                            val constructor = LwjglClasses
-                                .vulkan(handleClassName(output.type))
-                                ?.constructors
-                                ?.first { isSupportedHandleConstructor(it, commandMethod, reachableObjects) }
-                            if (constructor != null) {
-                                constructor.parameters
-                                    .drop(1)
-                                    .forEach { param -> add(param.toTypeString()) }
-                            } else {
-                                val parent = handleParent(output.type)
-                                if (parent != null) {
-                                    add(LwjglClasses.vulkan(handleClassName(parent)), handleClassName(parent))
-                                }
-                            }
-                        }
-                        if (output.declaredParam.len.isNotEmpty()) {
-                            val mapBody =
-                                returnValueConstructor?.let { constructor ->
-                                    "${constructor.name}(${constructor.arguments.joinToString(", ")})"
-                                }
-                            import("com.stochastictinkr.util.map")
-                            returnStatement = "return ${output.name}.map { $mapBody }"
-                            returnType = "List<${returnValueConstructor?.name}>"
-                        }
-                    }
-
-                    output.type == "VkBool32" -> {
-                        returnType = "Boolean"
-                        returnStatement = "return ${output.name}[0] != 0"
-                    }
-
-                    output.type in setOf("VkDeviceSize", "VkRemoteAddressNV") -> {
-                        returnType = "Long"
-                        returnStatement = "return ${output.name}[0]"
-                    }
-
-                    outputCategory == Category.ENUM || outputCategory == Category.BITMASK -> {
-                        returnType = output.type
-                        returnStatement = "return ${output.type}(${output.name}[0])"
-                    }
-
-                    else -> {
-                        System.err.println("WARNING: Unsupported return type: ${commandMethod.command.name}")
-                    }
-                }
-            }
-        }
-    */
 
     private fun lengthExpression(
         len: List<String>,
