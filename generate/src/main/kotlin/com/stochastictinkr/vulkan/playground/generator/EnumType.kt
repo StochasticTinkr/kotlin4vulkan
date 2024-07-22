@@ -14,9 +14,8 @@ package com.stochastictinkr.vulkan.playground.generator
  */
 class EnumType(
     val name: String,
-    val alias: String?,
     val typedef: String?,
-    val constantsCollection: Type,
+    val constantsCollection: Type?,
     val isBitmask: Boolean,
     private val getValues: () -> Sequence<EnumConstant>,
     val bitWidth: Int,

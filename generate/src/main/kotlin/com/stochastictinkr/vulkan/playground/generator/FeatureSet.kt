@@ -15,7 +15,7 @@ data class FeatureSet(
     val registry: Registry,
     val featureClass: Class<*>,
     val extensionClasses: Map<String, Class<*>?>,
-    val documentation: Documentation
+    val documentation: Documentation,
 ) {
     /**
      * The feature which this set is based on.
@@ -105,10 +105,10 @@ data class FeatureSet(
         requires
             .flatMap { it.types }
             .filter { typeReferenceSupported(it) }
-            .map { type(it) }
+            .map { getType(it) }
             .flatMap { type ->
                 sequence {
-                    type.alias?.let { alias -> yield(type(alias)) }
+                    type.alias?.let { alias -> yield(getType(alias)) }
                     yield(type)
                 }
             }
@@ -116,14 +116,14 @@ data class FeatureSet(
     /**
      * Get the supported type with the given name.
      */
-    private fun type(typeName: String) =
+    private fun getType(typeName: String) =
         registry.typesByName.getValue(typeName).single(::typeSupported)
 
     /**
      * Get the supported type with the given reference.
      */
-    private fun type(typeReference: TypeReference) =
-        type(typeReference.name)
+    private fun getType(typeReference: TypeReference) =
+        getType(typeReference.name)
 
     private fun typeOrNull(typeName: String?) =
         registry
@@ -158,20 +158,16 @@ data class FeatureSet(
         return enumTypesByName.getOrPut(type.name) { createEnumType(type) }
     }
 
+
     private fun createEnumType(type: Type): EnumType {
         val enumType = when (type.category) {
             Category.ENUM -> type
-            Category.BITMASK -> {
-                val values =
-                    (type.details as BitmaskDetails).bitValues ?: type.requires ?: error("No values for bitmask $type")
-                type(values)
-            }
-
+            Category.BITMASK -> ((type.details as BitmaskDetails).bitValues ?: type.requires)?.let(::getType)
             else -> error("Unexpected category ${type.category}")
         }
         val bitWidth =
             registry
-                .enumsByName[enumType.alias ?: enumType.name]
+                .enumsByName[enumType?.alias ?: enumType?.name]
                 ?.bitWidth
                 ?: when (type.node.children("type").singleOrNull()?.textContent) {
                     "VkFlags" -> 32
@@ -181,11 +177,10 @@ data class FeatureSet(
 
         return EnumType(
             name = type.name,
-            alias = type.alias,
             typedef = type.node.children("type").singleOrNull()?.textContent,
             constantsCollection = enumType,
             isBitmask = type.category == Category.BITMASK,
-            getValues = { enumConstants(enumType) },
+            getValues = enumType?.let { { enumConstants(it) } } ?: { emptySequence() },
             bitWidth
         )
     }
@@ -284,7 +279,7 @@ data class FeatureSet(
     }
 
     private infix fun String?.isAliasFor(other: String?): Boolean {
-        return this?.let { type(it).alias } == other
+        return this?.let { getType(it).alias } == other
     }
 
 

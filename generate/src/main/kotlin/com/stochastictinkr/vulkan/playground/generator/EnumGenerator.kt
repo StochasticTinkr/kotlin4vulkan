@@ -11,16 +11,15 @@ class EnumGenerator(private val root: Path, featureSet: FeatureSet) {
     private val tagPattern = registry.tags.flatMap { it.tag }.joinToString("|") { it.name }
     private val tagSuffix = Regex("$tagPattern\$")
 
+    fun generateEnumAliasFile(className: String, aliasName: String) {
+        createKotlinFile(root, OUTPUT_PACKAGE, className) {
+            +"typealias $className = $aliasName"
+            +"typealias ${className}Builder = ${aliasName}Builder"
+        }
+    }
+
     fun generateEnumFile(collection: EnumType) {
         val className = collection.name
-
-        collection.alias?.let { aliasName ->
-            createKotlinFile(root, OUTPUT_PACKAGE, className) {
-                +"typealias $className = $aliasName"
-                +"typealias ${className}Builder = ${aliasName}Builder"
-            }
-            return
-        }
 
         createKotlinFile(root, OUTPUT_PACKAGE, className) {
 
@@ -33,7 +32,7 @@ class EnumGenerator(private val root: Path, featureSet: FeatureSet) {
             +"@JvmInline"
             "value class $className(val value: $valueType = 0)" {
                 if (className == "VkResult") vkResultMembers()
-                if (collection.isBitmask) bitmaskMembers(className, collection)
+                if (collection.isBitmask) bitmaskMembers(className)
 
                 "companion object" {
                     +"""
@@ -184,7 +183,6 @@ class EnumGenerator(private val root: Path, featureSet: FeatureSet) {
     }
 
 
-
     context(KotlinFileBuilder)
     private fun constantDeclarations(
         collection: EnumType,
@@ -283,7 +281,7 @@ class EnumGenerator(private val root: Path, featureSet: FeatureSet) {
     }
 
     context(KotlinFileBuilder)
-    private fun bitmaskMembers(className: String, collection: EnumType) {
+    private fun bitmaskMembers(className: String) {
         +"""
         /**
          * Returns a union of this bitmask and another bitmask.
@@ -300,12 +298,5 @@ class EnumGenerator(private val root: Path, featureSet: FeatureSet) {
          */
         operator fun contains(other: $className) = value and other.value == other.value
         """
-        """
-        /**
-         * Returns true if this bitmask contains the given bit.
-         */
-        operator fun contains(bit: collection.constantsCollection.name) = value and other.value == other.value
-         
-        """(skipIf = collection.constantsCollection.name == collection.name)
     }
 }

@@ -105,7 +105,6 @@ class StructGenerator(private val root: Path, val featureSet: FeatureSet) {
                 builderType = "${structName}BufferBuilder",
                 resultType = bufferName
             )
-
             "data object ${structName}Builder" {
                 processMembers(structClass, memberNames)
             }
@@ -164,25 +163,32 @@ class StructGenerator(private val root: Path, val featureSet: FeatureSet) {
 
     context(KotlinFileBuilder)
     private fun processDelegateMethod(receiver: Class<*>, memberName: String, overloads: List<MethodTypeString>) {
-        val getter = overloads.singleOrNull { it.nativeType != null && it.parameters.isEmpty() }
-        val setter =
-            overloads.singleOrNull { it.jvmType == it.element.declaringClass && it.parameters.singleOrNull()?.nativeType != null }?.parameters?.single()
-        val typeString = getter ?: setter ?: return
+        val getterMethod = overloads.singleOrNull { it.nativeType != null && it.parameters.isEmpty() }
+        val setterMethod =
+            overloads.singleOrNull { it.jvmType == it.element.declaringClass && it.parameters.singleOrNull()?.nativeType != null }
+        val getterType: LwjglTypeString<*>? = getterMethod
+        val setterType: LwjglTypeString<*>? = setterMethod?.parameters?.single()
+        val typeString = getterType ?: setterType ?: return
         val category = featureSet.categoryByTypeName[typeString.type] ?: return
         val typeName = typeString.type
         if (typeString.isArray || typeString.numPointers > 0) {
             return
         }
-        if (getter != null) {
+        if (setterType != null) {
+            check(setterMethod.parameters.size == 1) {
+                "Setter method $setterMethod does not have exactly one parameter"
+            }
+        }
+        if (getterType != null) {
             when (category) {
                 Category.ENUM, Category.BITMASK -> {
-                    val valsType = if (setter != null) "var" else "val"
+                    val valsType = if (setterType != null) "var" else "val"
                     +"""
                     $valsType ${receiver.fullName}.$memberName
                         get() = $typeName.of($memberName())
                     """
-                    "        set(value) { $memberName(value.value) }"(
-                        skipIf = setter == null,
+                    "    set(value) { $memberName(value.value) }"(
+                        skipIf = setterType == null,
                         keepIndent = true
                     )
                     +""
@@ -191,8 +197,8 @@ class StructGenerator(private val root: Path, val featureSet: FeatureSet) {
                 else -> Unit
             }
         }
-        if (setter != null) {
-            when (featureSet.categoryByTypeName[setter.type]) {
+        if (setterType != null) {
+            when (featureSet.categoryByTypeName[setterType.type]) {
                 Category.ENUM, Category.BITMASK -> {
                     usesContracts()
                     "inline fun ${receiver.fullName}.$memberName(builder: ${typeName}Builder.() -> $typeName):${receiver.fullName}" {

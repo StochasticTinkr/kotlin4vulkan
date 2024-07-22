@@ -16,7 +16,19 @@ const val OUTPUT_PACKAGE = "com.stochastictinkr.vulkan"
 fun generate(
     outputDir: Path,
     featureSet: FeatureSet,
+    clean: Boolean = false,
 ) {
+    println("Generating bindings for ${featureSet.api} ${featureSet.featureName} in $outputDir")
+
+    if (clean) {
+        if (outputDir.toFile().absolutePath == "/") error("Cannot delete root directory")
+        else {
+            println("Deleting $outputDir")
+            outputDir.toFile().deleteRecursively()
+        }
+    }
+    outputDir.toFile().mkdirs()
+
     val structGenerator = StructGenerator(outputDir, featureSet)
     val enumGenerator = EnumGenerator(outputDir, featureSet)
     val handleGenerator = HandleGenerator(outputDir, featureSet)
@@ -28,7 +40,10 @@ fun generate(
     featureSet.types.processList("type", { "${"${it.category}:".padEnd(13)} ${it.name}" }) { type ->
         when (type.category) {
             Category.HANDLE -> handleGenerator.generateHandleFile(type, type.details as HandleDetails)
-            Category.ENUM -> enumGenerator.generateEnumFile(featureSet.enumType(type))
+            Category.ENUM, Category.BITMASK ->
+                if (type.alias != null) enumGenerator.generateEnumAliasFile(type.name, type.alias)
+                else enumGenerator.generateEnumFile(featureSet.enumType(type))
+
             Category.STRUCT, Category.UNION ->
                 structGenerator.generateStructFile(type, type.details as StructDetails)
 
@@ -62,6 +77,7 @@ private fun createFeatureSet(
 
 
 class Arguments(parser: ArgParser) {
+    val clean: Boolean by parser.flagging("Clean the output directory before generating")
     val input: Path by parser.storing("Path to the Vulkan-Docs directory") { Path.of(this) }
     val output: Path by parser.storing("Path to the output directory") { Path.of(this) }
     val targetFeature: String by parser.storing("Target feature name").default("VK_VERSION_1_3")
@@ -77,5 +93,5 @@ fun main(vararg args: String) {
         val documentation = parseDocumentation(input)
         createFeatureSet(registry, targetFeature, targetApi, documentation)
     }
-    generate(arguments.output, featureSet)
+    generate(arguments.output, featureSet, arguments.clean)
 }

@@ -1,17 +1,10 @@
-import org.gradle.jvm.tasks.Jar
-import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
-import org.lwjgl.Lwjgl
-import org.lwjgl.lwjgl
-
 plugins {
     kotlin("jvm") version "1.9.24"
-    id("org.lwjgl.plugin") version "0.0.34"
     idea
     `maven-publish`
     `java-library`
 
 }
-data class Version(override val string: String) : org.lwjgl.Version
 
 group = "com.stochastictinkr"
 version = "1.0-SNAPSHOT"
@@ -42,15 +35,11 @@ java {
 }
 
 dependencies {
-    lwjgl {
-        version = Version("3.3.3")
-        implementation(
-            Lwjgl.Module.core,
-            Lwjgl.Module.vulkan,
-            Lwjgl.Module.glfw,
-            Lwjgl.Module.shaderc,
-        )
-    }
+    api("org.lwjgl:lwjgl:3.3.4")
+    api("org.lwjgl:lwjgl-vulkan:3.3.4")
+    api("org.lwjgl:lwjgl-glfw:3.3.4")
+    api("org.lwjgl:lwjgl-shaderc:3.3.4")
+
     testImplementation("org.jetbrains.kotlin:kotlin-test")
 }
 
@@ -74,8 +63,7 @@ sourceSets {
     }
 }
 
-
-tasks.withType<KotlinCompile> {
+tasks.compileKotlin {
     kotlinOptions {
         freeCompilerArgs += "-Xcontext-receivers"
     }
