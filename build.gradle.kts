@@ -1,4 +1,3 @@
-import org.gradle.jvm.tasks.Jar
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 import org.lwjgl.Lwjgl
 import org.lwjgl.lwjgl
@@ -43,7 +42,7 @@ java {
 
 dependencies {
     lwjgl {
-        version = Version("3.3.3")
+        version = Version("3.3.4")
         implementation(
             Lwjgl.Module.core,
             Lwjgl.Module.vulkan,

@@ -16,15 +16,15 @@ repositories {
 
 dependencies {
     implementation(kotlin("reflect"))
-    implementation("org.lwjgl:lwjgl:3.3.3")
-    runtimeOnly("org.lwjgl:lwjgl-vulkan:3.3.3")
+    implementation("org.lwjgl:lwjgl:3.3.4")
+    runtimeOnly("org.lwjgl:lwjgl-vulkan:3.3.4")
 
     // Command line parsing:
     implementation("com.xenomachina:kotlin-argparser:2.0.7")
     implementation("com.google.code.findbugs:jsr305:3.0.2")
 
     testImplementation("org.jetbrains.kotlin:kotlin-test")
-    testImplementation("io.mockk:mockk:1.13.10")
+    testImplementation("io.mockk:mockk:1.13.12")
 }
 
 tasks.test {
@@ -86,6 +86,7 @@ tasks.register<JavaExec>("generateClasses") {
     mainClass = "com.stochastictinkr.vulkan.playground.generator.GenerateKt"
     classpath = sourceSets.main.get().runtimeClasspath
     args(
+        "--clean",
         "--input", inputDir.get().asFile.absolutePath,
         "--output", outputDir.get().asFile.absolutePath
     )
